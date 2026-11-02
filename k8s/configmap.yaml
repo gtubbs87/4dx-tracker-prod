@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: 4dx-config
+  namespace: 4dx-prod
+data:
+  PORT: "3000"
+  DB_HOST: "mysql.internal.example.com"   # point at your managed MySQL/RDS/CloudSQL endpoint
+  DB_PORT: "3306"
+  DB_NAME: "fourdx"
+  CORS_ORIGIN: "https://4dx.example.com"
+  OKTA_ISSUER: "https://your-org.okta.com/oauth2/default"
+  OKTA_REDIRECT_URI: "https://4dx.example.com/auth/okta/callback"
+  POST_LOGIN_REDIRECT: "https://4dx.example.com"

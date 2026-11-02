@@ -1,0 +1,61 @@
+version: "3.9"
+
+# Production-shaped stack: containerized MySQL + api + web, Okta SSO.
+# For real production at scale, point DB_HOST at a managed MySQL instance
+# instead (see PRODUCTION_ARCHITECTURE.md) and drop the `mysql` service —
+# everything else here is unchanged either way.
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set in .env}
+      MYSQL_DATABASE: fourdx
+      MYSQL_USER: ${DB_USER:-app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set in .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-app}
+      DB_PASSWORD: ${DB_PASSWORD:?set in .env}
+      DB_NAME: fourdx
+      JWT_SECRET: ${JWT_SECRET:?set in .env}
+      CORS_ORIGIN: ${WEB_ORIGIN:-http://localhost:8080}
+      OKTA_ISSUER: ${OKTA_ISSUER:?set in .env}
+      OKTA_CLIENT_ID: ${OKTA_CLIENT_ID:?set in .env}
+      OKTA_CLIENT_SECRET: ${OKTA_CLIENT_SECRET:?set in .env}
+      OKTA_REDIRECT_URI: ${OKTA_REDIRECT_URI:-http://localhost:3000/auth/okta/callback}
+      POST_LOGIN_REDIRECT: ${WEB_ORIGIN:-http://localhost:8080}
+    ports:
+      - "3000:3000"
+
+  web:
+    build:
+      context: ./client
+      args:
+        VITE_GA_MEASUREMENT_ID: ${GA_MEASUREMENT_ID:-}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:8080"
+
+volumes:
+  mysql_data:

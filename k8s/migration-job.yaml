@@ -1,0 +1,44 @@
+# Run as a Helm pre-upgrade hook or ArgoCD PreSync hook so it completes
+# before the new `api` Deployment rolls out. Re-running is safe: schema.sql
+# uses CREATE TABLE (not IF NOT EXISTS) for a first-run bootstrap — for
+# repeat deploys, replace this with a real migration tool (Flyway/Prisma
+# Migrate/Alembic) that tracks what's already applied.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate-__TAG__
+  namespace: 4dx-prod
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: mysql:8.4
+          # Password via MYSQL_PWD (an env var, visible only to same-uid/root
+          # via /proc/<pid>/environ), never as a -p<password> CLI argument —
+          # command-line args are visible to any process on the node via `ps`.
+          command:
+            - sh
+            - -c
+            - "mysql -h $DB_HOST -P $DB_PORT -u $DB_USER $DB_NAME < /migrations/schema.sql"
+          envFrom:
+            - configMapRef: { name: 4dx-config }
+            - secretRef: { name: 4dx-db-credentials }
+          env:
+            - name: MYSQL_PWD
+              valueFrom: { secretKeyRef: { name: 4dx-db-credentials, key: DB_PASSWORD } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+      volumes:
+        - name: migrations
+          configMap:
+            name: 4dx-schema-sql
+---
+# Load schema.sql into a ConfigMap alongside this Job, e.g.:
+#   kubectl create configmap 4dx-schema-sql -n 4dx-prod --from-file=schema.sql=db/schema.sql

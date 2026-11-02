@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: 4dx-prod
+  labels:
+    # Built-in Pod Security admission (k8s 1.25+) enforces this against every
+    # pod in the namespace — a backstop if a future manifest is added without
+    # the securityContext hardening already applied to api/web/cronjobs here.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

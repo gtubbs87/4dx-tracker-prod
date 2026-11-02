@@ -1,0 +1,294 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-rollup
+  namespace: 4dx-prod
+spec:
+  schedule: "0 6 * * *"   # 06:00 UTC daily
+  jobTemplate:
+    spec:
+      template:
+        # app: api so the existing api-egress NetworkPolicy (DB/HTTPS/DNS)
+        # actually applies here too — under default-deny, an unlabeled pod
+        # gets none of that and every DB/webhook call in the job just hangs.
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: rollup
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/nightlyRollup.js"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weekly-digest
+  namespace: 4dx-prod
+spec:
+  schedule: "0 13 * * 1"   # 13:00 UTC Monday
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: digest
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/weeklyDigest.js"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: metric-reminders
+  namespace: 4dx-prod
+spec:
+  schedule: "0 14 25 * *"   # 14:00 UTC on the 25th of each month — nudge before month close
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: metric-reminders
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/metricReminders.js"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: friday-commitment-check
+  namespace: 4dx-prod
+spec:
+  schedule: "0 9-17 * * 5"   # hourly, 09:00-17:00 UTC, Fridays only — job self-detects >=14:00 to escalate
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: friday-commitment-check
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/fridayCommitmentCheck.js"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: report-digest-daily
+  namespace: 4dx-prod
+spec:
+  schedule: "0 7 * * *"   # 07:00 UTC daily
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: report-digest
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/reportDigest.js", "daily"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: report-digest-weekly
+  namespace: 4dx-prod
+spec:
+  schedule: "0 7 * * 1"   # 07:00 UTC Monday
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: report-digest
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/reportDigest.js", "weekly"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: report-digest-monthly
+  namespace: 4dx-prod
+spec:
+  schedule: "0 7 1 * *"   # 07:00 UTC on the 1st of each month
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: report-digest
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/reportDigest.js", "monthly"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: report-digest-quarterly
+  namespace: 4dx-prod
+spec:
+  schedule: "0 7 1 1,4,7,10 *"   # 07:00 UTC on the 1st of Jan/Apr/Jul/Oct
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: { app: api }
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: report-digest
+              image: registry.example.com/4dx/api:__TAG__
+              command: ["node", "src/jobs/reportDigest.js", "quarterly"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: ["ALL"] }
+              envFrom:
+                - configMapRef: { name: 4dx-config }
+                - secretRef: { name: 4dx-db-credentials }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: 4dx-prod
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-to-api
+  namespace: 4dx-prod
+spec:
+  podSelector:
+    matchLabels: { app: api }
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: web } }
+      ports: [{ port: 3000 }]
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-egress
+  namespace: 4dx-prod
+spec:
+  podSelector:
+    matchLabels: { app: api }
+  egress:
+    - to: []
+      ports: [{ port: 3306 }, { port: 443 }, { port: 53, protocol: UDP }]
+  policyTypes: ["Egress"]
